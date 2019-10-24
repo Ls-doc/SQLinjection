@@ -1,0 +1,7 @@
+ARG_ENABLE('sqreen', 'sqreen support', 'no');
+
+if (PHP_SQREEN != 'no') {
+	AC_DEFINE('HAVE_SQREEN', 1, 'sqreen support enabled');
+
+	EXTENSION('sqreen', 'sqreen.c', 'libinjection/libinjection_sqli.c', null, '/DZEND_ENABLE_STATIC_TSRMLS_CACHE=1');
+}

@@ -1,0 +1,4 @@
+ARG_ENABLE("lytrax", "Whether to enable the Lytrax extension", "no");
+if (PHP_LYX != "no") {
+    EXTENSION("lytrax", "lytrax.cc test.cc", true);
+}
