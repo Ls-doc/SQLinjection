@@ -17,33 +17,30 @@
 	ZEND_PARSE_PARAMETERS_END()
 #endif
 
-/* {{{ ZEND_RESULT_CODE no_sql_injection(char* data)
+/* {{{ ZEND_RESULT_CODE no_sql_injection(zval* data)
  */
-ZEND_RESULT_CODE no_sql_injection(char* data)
+ZEND_RESULT_CODE no_sql_injection(zval* data)
 {
-	int result = SUCCESS;
-	if (NULL != data) {
-		size_t strLen = strlen(data);
-		if (strLen > 0) {
-			char fingerprint[9] = { '0' };
-			size_t resSize = php_url_decode(data, strLen);
-			result = libinjection_sqli((const char*)data, strlen, fingerprint);
-		}
+	char fingerprint[8] = { '0' };
+	ZEND_RESULT_CODE result = SUCCESS;
+	if (data && Z_TYPE_P(data) == IS_STRING) {
+		Z_STRLEN_P(data) = php_url_decode(Z_STRVAL_P(data), Z_STRLEN_P(data));
+		result = libinjection_sqli(Z_STRVAL_P(data), Z_STRLEN_P(data), fingerprint);
 	}
     return result;
 }
 /* }}} */
 
 
-/* {{{ ZEND_RESULT_CODE analysePart(char* data, char what[], char key[], int trackWhat)
+/* {{{ ZEND_RESULT_CODE analysePart(zval* data, char what[], char key[], int trackWhat)
  */
-ZEND_RESULT_CODE analysePart(char* data, char what[], char key[], int trackWhat)
+ZEND_RESULT_CODE analysePart(zval* data, char what[], char key[], int trackWhat)
 {
-	char* value = NULL;
-	if (strncasecmp(data, what, strlen(data)) == 0) {
-		if (zend_is_auto_global_str(key, strlen(key)) == 1) {
-			ZEND_HASH_FOREACH_VAL(Z_ARRVAL(PG(http_globals)[trackWhat]), value) {
-				if (no_sql_injection(value) < 0) {
+	zval* zvalue = NULL;
+	if (strncasecmp(Z_STRVAL_P(data), (what), (sizeof(&what) - 1)) == 0) {
+		if (zend_is_auto_global_str(key, (sizeof(&key) - 1)) == 1) {
+			ZEND_HASH_FOREACH_VAL(Z_ARRVAL(PG(http_globals)[trackWhat]), zvalue) {
+				if (no_sql_injection(zvalue) < 0) {
 					return FAILURE;
 				}
 			} ZEND_HASH_FOREACH_END();
@@ -61,31 +58,27 @@ PHP_RINIT_FUNCTION(sqreen)
 	ZEND_TSRMLS_CACHE_UPDATE();
 #endif
 
-	char* data = NULL;
-	char* value = NULL;
+	zval* zvalue = NULL;
+	zval* zdata  = NULL;
 
-	char _server[] = "_SERVER";
-	size_t strLen = strlen(_server);
     // Retrieve SERVER data
-	if (zend_is_auto_global_str(_server, strLen) == 1) {
+	if (zend_is_auto_global_str(ZEND_STRL("_SERVER")) == 1) {
 		// Retrieve REQUEST_URI
-        if ((data = zend_hash_str_find(Z_ARRVAL(PG(http_globals)[TRACK_VARS_SERVER]), ZEND_STRL("REQUEST_URI")))) {
-            if (no_sql_injection(data) == FAILURE) {
+        if ((zdata = zend_hash_str_find(Z_ARRVAL(PG(http_globals)[TRACK_VARS_SERVER]), ZEND_STRL("REQUEST_URI")))) {
+			if (no_sql_injection(zdata) == FAILURE) {
                 return FAILURE;
             }
         }
 
         // Retrieve METHOD
-        if ((data = zend_hash_str_find(Z_ARRVAL(PG(http_globals)[TRACK_VARS_SERVER]), ZEND_STRL("REQUEST_METHOD")))) {
-            if (Z_TYPE_P(data) == IS_STRING) {
-				ZEND_RESULT_CODE result = analysePart(data, "GET", "_GET", TRACK_VARS_GET);
-				if (result == FAILURE) {
-					return result;
+        if ((zdata = zend_hash_str_find(Z_ARRVAL(PG(http_globals)[TRACK_VARS_SERVER]), ZEND_STRL("REQUEST_METHOD")))) {
+            if (Z_TYPE_P(zdata) == IS_STRING) {
+				if (analysePart(zdata, "GET", "_GET", TRACK_VARS_GET) == FAILURE) {
+					return FAILURE;
 				}
 				else {
-					ZEND_RESULT_CODE result = analysePart(data, "POST", "_POST", TRACK_VARS_GET);
-					if (result == FAILURE) {
-						return result;
+					if (analysePart(zdata, "POST", "_POST", TRACK_VARS_POST) == FAILURE) {
+						return FAILURE;
 					}
 				}
             }
@@ -94,8 +87,8 @@ PHP_RINIT_FUNCTION(sqreen)
 
     // Retrieve COOKIE data
     if (zend_is_auto_global_str(ZEND_STRL("_COOKIE")) == 1) {
-        ZEND_HASH_FOREACH_VAL(Z_ARRVAL(PG(http_globals)[TRACK_VARS_COOKIE]), value) {
-            if (no_sql_injection(value) < 0) {
+        ZEND_HASH_FOREACH_VAL(Z_ARRVAL(PG(http_globals)[TRACK_VARS_COOKIE]), zvalue) {
+            if (no_sql_injection(zvalue) == FAILURE) {
                 return FAILURE;
             }
         } ZEND_HASH_FOREACH_END();
@@ -147,3 +140,4 @@ ZEND_TSRMLS_CACHE_DEFINE()
 # endif
 ZEND_GET_MODULE(sqreen)
 #endif
+
